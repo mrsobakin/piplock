@@ -1,0 +1,49 @@
+name: Build
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          echo "$SIGNING_KEY" | base64 -d > signing-key.jks
+          ./gradlew assembleRelease
+
+      - name: Package artifacts
+        env:
+          VERSION_SUFFIX: ${{ startsWith(github.ref, 'refs/tags/v') && format('-{0}', github.ref_name) || '' }}
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/release/app-release.apk artifacts/piplock$VERSION_SUFFIX-release.apk
+
+      - name: Upload artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: artifacts/*
+
+      - name: Create Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: ncipollo/release-action@v1.16.0
+        with:
+          generateReleaseNotes: true
+          artifacts: "artifacts/*"
